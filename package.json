@@ -1,0 +1,37 @@
+{
+  "name": "amcl-launcher",
+  "version": "1.0.3",
+  "description": "AMCL - A modern Minecraft launcher for Windows",
+  "main": "./out/main/index.js",
+  "author": "AMCL Team",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-client.ps1",
+    "dist:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-client.ps1"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.18",
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "happy-dom": "^21.0.4",
+    "playwright-core": "^1.64.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5"
+  }
+}

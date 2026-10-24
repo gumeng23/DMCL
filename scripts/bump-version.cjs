@@ -1,0 +1,12 @@
+﻿const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+pkg.version = '1.0.3';
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+const lock = JSON.parse(fs.readFileSync('package-lock.json','utf8'));
+lock.version = '1.0.3';
+if (lock.packages && lock.packages['']) lock.packages[''].version = '1.0.3';
+fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+const p = 'scripts/build-client.ps1';
+const text = fs.readFileSync(p, 'utf8');
+fs.writeFileSync(p, text, 'utf8');
+console.log('version 1.0.3');

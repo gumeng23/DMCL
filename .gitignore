@@ -1,0 +1,14 @@
+node_modules/
+out/
+release/
+dist/
+.npm-cache/
+.electron-cache/
+.userdata/
+.dev-data/
+preview/
+screenshots/
+*.tsbuildinfo
+*.log
+.DS_Store
+Thumbs.db

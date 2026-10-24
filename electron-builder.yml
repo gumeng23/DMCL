@@ -1,0 +1,48 @@
+appId: com.amcl.launcher
+productName: AMCL
+copyright: Copyright © 2026 AMCL Team
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/.npm-cache/**"
+  - "!**/.electron-cache/**"
+
+asar: true
+npmRebuild: false
+compression: normal
+removePackageScripts: true
+
+win:
+  icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
+  target:
+    - target: portable
+      arch:
+        - x64
+    - target: nsis
+      arch:
+        - x64
+
+portable:
+  artifactName: AMCL-${version}-portable.${ext}
+  requestExecutionLevel: user
+  unpackDirName: AMCL
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AMCL
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  artifactName: AMCL-Setup-${version}.${ext}
+  deleteAppDataOnUninstall: false
