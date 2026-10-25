@@ -2,10 +2,10 @@ import AdmZip from 'adm-zip'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { app } from 'electron'
 import type { InstallLoaderInput, InstallVersionInput, LoaderType } from '../../shared/types'
-import { downloadFile, downloadMany, downloadWithFallback, getJsonWithFallback } from '../http'
+import { downloadFile, downloadMany, downloadWithFallback, getJson, getJsonWithFallback } from '../http'
 import { ensureBaseDirs, resolvePaths } from '../paths'
 import { store } from '../store'
 import { isAbortError, taskManager, type TaskHandle } from '../tasks'
@@ -100,7 +100,8 @@ export class InstallerService {
         gameVersion: input.versionId,
         loader: input.loader,
         loaderVersion: input.loaderVersion,
-        instanceId: input.instanceId
+        instanceId: input.instanceId,
+        installApi: input.installApi
       })
       return { versionId: result.versionId, loader: input.loader }
     }
@@ -358,9 +359,6 @@ export class InstallerService {
       neoforge: 'NeoForge',
       optifine: 'OptiFine'
     }
-    if (input.loader === 'neoforge') {
-      throw new Error('NeoForge 安装将在后续版本开放')
-    }
     const task = taskManager.create(
       'loader',
       `安装 ${labels[input.loader]} · ${input.gameVersion}`
@@ -382,6 +380,11 @@ export class InstallerService {
       if (input.loader === 'forge') {
         const versionId = await this.installForge(input.gameVersion, loaderVersion, task)
         task.success(`Forge ${loaderVersion} 安装完成`)
+        return { versionId }
+      }
+      if (input.loader === 'neoforge') {
+        const versionId = await this.installNeoForge(input.gameVersion, loaderVersion, task)
+        task.success(`NeoForge ${loaderVersion} 安装完成`)
         return { versionId }
       }
       if (input.loader === 'optifine') {
@@ -438,7 +441,17 @@ export class InstallerService {
           })
         }
       )
-      task.success(`${labels[input.loader]} 安装完成`)
+      let companionNote = ''
+      if (input.installApi && (input.loader === 'fabric' || input.loader === 'quilt')) {
+        const companion = await this.installCompanionApi(
+          input.loader,
+          input.gameVersion,
+          input.instanceId,
+          task
+        )
+        if (!companion.ok) companionNote = `；API 未安装：${companion.message}`
+      }
+      task.success(`${labels[input.loader]} 安装完成${companionNote}`)
       return { versionId: profile.id }
     } catch (error) {
       this.failTask(task, error)
@@ -473,6 +486,7 @@ export class InstallerService {
         task.update({
           bytes: received,
           totalBytes: total,
+          percent: total ? (received / total) * 100 : undefined,
           message: `${(received / 1024 / 1024).toFixed(1)} MB`
         })
     })
@@ -506,6 +520,147 @@ export class InstallerService {
     return versionId
   }
 
+  private async installNeoForge(
+    gameVersion: string,
+    neoForgeVersion: string,
+    task: TaskHandle
+  ): Promise<string> {
+    const paths = resolvePaths(store.settings)
+    const installerName = `neoforge-${neoForgeVersion}-installer.jar`
+    const installerPath = join(paths.cacheDir, 'installers', installerName)
+    const url = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${neoForgeVersion}/neoforge-${neoForgeVersion}-installer.jar`
+
+    task.update({
+      stage: '下载 NeoForge 安装器',
+      message: installerName,
+      current: 0,
+      total: 1,
+      bytes: 0,
+      totalBytes: 0,
+      percent: undefined
+    })
+    await downloadWithFallback(url, installerPath, store.settings.downloadSource, {
+      signal: task.signal,
+      retries: 3,
+      onProgress: (received, total) =>
+        task.update({
+          bytes: received,
+          totalBytes: total,
+          percent: total ? (received / total) * 100 : undefined,
+          message: `${(received / 1024 / 1024).toFixed(1)} MB`
+        })
+    })
+    if (!existsSync(installerPath)) throw new Error('NeoForge 安装器下载失败')
+    task.log('NeoForge 安装器下载完成')
+
+    const javaPath = await this.resolveInstallerJava(gameVersion, task)
+    await this.ensureLauncherProfiles(paths.gameRoot)
+    task.update({
+      stage: '运行 NeoForge 安装器',
+      message: '正在下载并打补丁，请稍候…',
+      current: 0,
+      total: 0,
+      percent: undefined
+    })
+    const output = await this.runJavaInstaller(
+      javaPath,
+      ['-Duser.language=en', '-jar', installerPath, '--installClient', paths.gameRoot],
+      paths.gameRoot,
+      task
+    )
+    if (!/Successfully installed/i.test(output)) {
+      task.log('安装器没有返回成功标志，正在检查版本目录…')
+    }
+    const versionId = await this.findLatestInstalled(gameVersion, (id) =>
+      id.toLowerCase().includes('neoforge')
+    )
+    if (!versionId) throw new Error('NeoForge 安装结束，但没有找到生成的版本配置')
+    versionService.invalidate()
+    task.log(`NeoForge 版本已创建：${versionId}`)
+    return versionId
+  }
+
+  private async installCompanionApi(
+    loader: 'fabric' | 'quilt',
+    gameVersion: string,
+    instanceId: string | undefined,
+    task: TaskHandle
+  ): Promise<{ ok: boolean; message: string }> {
+    const instance =
+      (instanceId ? store.instances.find((item) => item.id === instanceId) : undefined) ||
+      store.selectedInstance
+    if (!instance) return { ok: false, message: '没有可用的游戏实例' }
+    const modsDir = join(instance.gameDir, 'mods')
+    await mkdir(modsDir, { recursive: true })
+
+    const attempts =
+      loader === 'fabric'
+        ? [{ slug: 'fabric-api', loader: 'fabric' }]
+        : [
+            { slug: 'quilted-fabric-api', loader: 'quilt' },
+            { slug: 'fabric-api', loader: 'quilt' }
+          ]
+
+    task.update({
+      stage: '下载前置 API',
+      message: loader === 'fabric' ? 'Fabric API' : 'Quilted Fabric API',
+      current: 0,
+      total: 1,
+      bytes: 0,
+      totalBytes: 0,
+      percent: undefined
+    })
+
+    let lastError = ''
+    for (const attempt of attempts) {
+      try {
+        const loaders = encodeURIComponent(JSON.stringify([attempt.loader]))
+        const versions = encodeURIComponent(JSON.stringify([gameVersion]))
+        const url = `https://api.modrinth.com/v2/project/${attempt.slug}/version?loaders=${loaders}&game_versions=${versions}`
+        const list = await getJson<
+          Array<{
+            version_number?: string
+            files?: Array<{
+              url?: string
+              filename?: string
+              primary?: boolean
+              size?: number
+              hashes?: { sha1?: string }
+            }>
+          }>
+        >(url, { timeoutMs: 20_000, retries: 2 })
+        const version = Array.isArray(list) ? list.find((item) => item.files?.length) : undefined
+        const file = version?.files?.find((item) => item.primary) || version?.files?.[0]
+        if (!file?.url || !file.filename) {
+          lastError = `没有找到适配 Minecraft ${gameVersion} 的 ${attempt.slug}`
+          continue
+        }
+        const fileName = basename(file.filename)
+        const destination = join(modsDir, fileName)
+        const result = await downloadFile(file.url, destination, {
+          signal: task.signal,
+          sha1: file.hashes?.sha1,
+          size: file.size,
+          retries: 3,
+          onProgress: (received, total) =>
+            task.update({
+              bytes: received,
+              totalBytes: total,
+              percent: total ? (received / total) * 100 : undefined,
+              message: fileName
+            })
+        })
+        task.log(`${attempt.slug} ${version?.version_number || ''} 已安装到 mods`)
+        task.update({ current: 1, percent: 100, bytes: result.bytes, totalBytes: result.bytes })
+        return { ok: true, message: fileName }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error)
+      }
+    }
+    task.log(`前置 API 下载失败：${lastError}`)
+    return { ok: false, message: lastError || '下载失败' }
+  }
+
   private async installOptiFine(
     gameVersion: string,
     loaderVersion: string,
@@ -533,6 +688,7 @@ export class InstallerService {
         task.update({
           bytes: received,
           totalBytes: total,
+          percent: total ? (received / total) * 100 : undefined,
           message: `${(received / 1024 / 1024).toFixed(1)} MB`
         })
     })

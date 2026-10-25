@@ -291,6 +291,16 @@ export function registerIpc(): void {
     return microsoftAuth.start(clean)
   })
 
+  ipcMain.handle('accounts:microsoft-browser-login', async (_event, clientId?: string) => {
+    const clean = String(clientId || '').trim()
+    if (clean && clean !== store.settings.msClientId) {
+      await store.updateSettings({ msClientId: clean })
+    }
+    const account = await microsoftAuth.browserLogin(clean)
+    appEvents.emit('accounts:changed')
+    return account
+  })
+
   ipcMain.handle('accounts:microsoft-poll', async (_event, flowId: string) => {
     const account = await microsoftAuth.poll(flowId)
     appEvents.emit('accounts:changed')

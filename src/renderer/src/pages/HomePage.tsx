@@ -366,7 +366,7 @@ export function HomePage({ onAccount }: { onAccount: () => void }): JSX.Element 
                   <span className="console-time">
                     {new Date(log.time).toLocaleTimeString('zh-CN', { hour12: false })}
                   </span>
-                  <span className="console-stream">{log.stream === 'stderr' ? 'ERR' : log.stream === 'launcher' ? 'AMCL' : 'OUT'}</span>
+                  <span className="console-stream">{log.stream === 'stderr' ? 'ERR' : log.stream === 'launcher' ? 'DMCL' : 'OUT'}</span>
                   <span className="console-text">{log.line}</span>
                 </div>
               ))

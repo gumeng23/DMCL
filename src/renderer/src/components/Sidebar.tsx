@@ -38,7 +38,7 @@ export function Sidebar({ onAccount }: { onAccount: () => void }): JSX.Element {
           <BrandCube size={34} />
         </div>
         <div className="brand-copy">
-          <div className="brand-name">AMCL</div>
+          <div className="brand-name">DMCL</div>
           <div className="brand-sub">MINECRAFT LAUNCHER</div>
         </div>
       </div>
@@ -98,7 +98,7 @@ export function Sidebar({ onAccount }: { onAccount: () => void }): JSX.Element {
 
       <div className="sidebar-footer">
         <span className="footer-pulse" />
-        <span>AMCL {data.appVersion}</span>
+        <span>DMCL {data.appVersion}</span>
         <span className="footer-divider" />
         <span>{data.online ? '服务在线' : '离线模式'}</span>
       </div>

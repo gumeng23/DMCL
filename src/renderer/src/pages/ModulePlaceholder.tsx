@@ -102,7 +102,7 @@ export function ModulePlaceholder({ kind }: { kind: Extract<PageId, 'mods' | 're
           </div>
           <div className="module-note">
             <span className="module-note-line" />
-            <span>AMCL Roadmap · Phase 2</span>
+            <span>DMCL Roadmap · Phase 2</span>
           </div>
         </div>
       </div>

@@ -410,7 +410,7 @@ export function SettingsPage(): JSX.Element {
           <SettingSection
             icon={Globe2}
             title="下载与网络"
-            description="选择资源下载来源，AMCL 会在失败时自动回退"
+            description="选择资源下载来源，DMCL 会在失败时自动回退"
           >
             <SettingRow title="下载源" description="国内网络推荐使用 BMCLAPI 镜像">
               <Segmented
@@ -497,9 +497,9 @@ export function SettingsPage(): JSX.Element {
 
           <section className="about-card">
             <div className="about-head">
-              <span className="about-logo">A</span>
+              <span className="about-logo">D</span>
               <div>
-                <strong>AMCL Launcher</strong>
+                <strong>DMCL Launcher</strong>
                 <span>Version {data.appVersion}</span>
               </div>
               <Badge tone="green">稳定版</Badge>
@@ -537,7 +537,7 @@ export function SettingsPage(): JSX.Element {
           <div className="settings-note">
             <Wifi size={15} />
             <p>
-              AMCL 不会上传你的游戏数据。账户凭据仅保存在本机，并使用系统级加密保护。
+              DMCL 不会上传你的游戏数据。账户凭据仅保存在本机，并使用系统级加密保护。
             </p>
           </div>
         </aside>

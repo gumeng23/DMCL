@@ -1,20 +1,36 @@
 import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { store } from './store'
 import { registerIpc, sendWindowMaximized, setMainWindow } from './ipc'
 import { logger } from './logger'
 
-app.setName('AMCL')
+app.setName('DMCL')
 
 function getArg(prefix: string): string | undefined {
   return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length)
 }
 
-// Portable / development override. The packaged launcher stores its data in %APPDATA%\AMCL.
-const dataDirArg = getArg('--data-dir=') || process.env.AMCL_DATA_DIR
-app.setPath('userData', dataDirArg ? resolve(dataDirArg) : join(app.getPath('appData'), 'AMCL'))
-app.setAppUserModelId('com.amcl.launcher')
+// Portable / development override. The packaged launcher stores its data in %APPDATA%\DMCL.
+const dataDirArg = getArg('--data-dir=') || process.env.DMCL_DATA_DIR || process.env.AMCL_DATA_DIR
+const defaultDataDir = join(app.getPath('appData'), 'DMCL')
+app.setPath('userData', dataDirArg ? resolve(dataDirArg) : defaultDataDir)
+app.setAppUserModelId('com.dmcl.launcher')
+
+async function migrateLegacyData(): Promise<void> {
+  if (dataDirArg) return
+  const legacy = join(app.getPath('appData'), 'AMCL')
+  const current = app.getPath('userData')
+  if (current.toLowerCase() === legacy.toLowerCase()) return
+  if (!existsSync(join(legacy, 'config.json')) || existsSync(join(current, 'config.json'))) return
+  await mkdir(current, { recursive: true })
+  await copyFile(join(legacy, 'config.json'), join(current, 'config.json'))
+  if (existsSync(join(legacy, 'secrets.bin'))) {
+    await copyFile(join(legacy, 'secrets.bin'), join(current, 'secrets.bin'))
+  }
+  logger.info('已从 AMCL 迁移启动器配置')
+}
 
 const screenshotPath = getArg('--screenshot=')
 const screenshotPage = getArg('--page=')
@@ -32,7 +48,7 @@ function createWindow(): BrowserWindow {
     frame: false,
     backgroundColor: '#080b0e',
     autoHideMenuBar: true,
-    title: 'AMCL · Minecraft Launcher',
+    title: 'DMCL · Minecraft Launcher',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -113,6 +129,7 @@ if (!gotLock && !screenshotPath) {
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null)
     try {
+      await migrateLegacyData()
       await store.init()
       registerIpc()
       createWindow()

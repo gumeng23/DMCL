@@ -1,4 +1,6 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { createServer } from 'node:http'
+import { shell } from 'electron'
 import type { AccountInfo, MicrosoftFlow } from '../../shared/types'
 import { getJson, HttpError, postForm, postJson } from '../http'
 import { store, type StoredAccount } from '../store'
@@ -86,6 +88,32 @@ function xstsMessage(code: number): string {
   return `Xbox Live 验证失败（错误码 ${code}）`
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function loginPage(title: string, message: string, success: boolean): string {
+  const accent = success ? '#7fcf46' : '#e66d62'
+  return `<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)} · DMCL</title></head>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1110;color:#eef6ef;font-family:'Segoe UI','Microsoft YaHei',sans-serif">
+  <main style="width:min(440px,calc(100vw - 48px));padding:34px;border:1px solid rgba(255,255,255,.1);border-radius:20px;background:#121b18;text-align:center">
+    <div style="width:54px;height:54px;margin:0 auto 18px;border-radius:16px;display:grid;place-items:center;background:rgba(127,207,70,.1);border:1px solid ${accent}44;color:${accent};font-size:26px">${success ? '✓' : '!'}</div>
+    <h1 style="margin:0 0 8px;font-size:22px">${escapeHtml(title)}</h1>
+    <p style="margin:0;color:#93a398;font-size:13px;line-height:1.8">${escapeHtml(message)}</p>
+    <div style="margin-top:24px;color:#5e6e62;font-size:10px;letter-spacing:1.8px">DMCL · MICROSOFT LOGIN</div>
+  </main>
+</body>
+</html>`
+}
+
 async function performXboxLogin(
   msAccessToken: string
 ): Promise<{ token: string; uhs: string; xid: string }> {
@@ -169,6 +197,135 @@ async function completeLogin(
 }
 
 export class MicrosoftAuthService {
+  /**
+   * Opens the default browser and waits for the loopback OAuth callback.
+   * Requires the Azure app to allow public clients and a http://localhost redirect URI.
+   */
+  async browserLogin(clientIdInput?: string): Promise<AccountInfo> {
+    const clientId = clientIdFrom(clientIdInput)
+    const verifier = randomBytes(48).toString('base64url')
+    const challenge = createHash('sha256').update(verifier).digest('base64url')
+    const state = randomBytes(18).toString('hex')
+
+    return await new Promise<AccountInfo>((resolve, reject) => {
+      let settled = false
+      let callbackUrl = ''
+      let timer: NodeJS.Timeout
+
+      const finish = (error: Error | null, account?: AccountInfo): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        try {
+          server.close()
+        } catch {
+          // Server may not have started.
+        }
+        if (error) reject(error)
+        else if (account) resolve(account)
+        else reject(new Error('Microsoft 登录未完成'))
+      }
+
+      const server = createServer(async (req, res) => {
+        try {
+          const requestUrl = new URL(req.url || '/', 'http://localhost')
+          if (requestUrl.pathname !== '/auth/callback') {
+            res.writeHead(404)
+            res.end('Not found')
+            return
+          }
+          const error = requestUrl.searchParams.get('error')
+          const returnedState = requestUrl.searchParams.get('state')
+          if (error) {
+            const description = requestUrl.searchParams.get('error_description') || error
+            res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end(loginPage('登录未完成', description, false))
+            finish(new Error(description))
+            return
+          }
+          if (returnedState !== state) {
+            res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end(loginPage('登录校验失败', 'state 不匹配，请返回启动器重试。', false))
+            finish(new Error('Microsoft 登录校验失败，请重试'))
+            return
+          }
+          const code = requestUrl.searchParams.get('code')
+          if (!code) {
+            res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end(loginPage('登录未完成', '没有收到授权代码。', false))
+            finish(new Error('没有收到 Microsoft 授权代码'))
+            return
+          }
+          const token = await postForm<TokenResponse>(TOKEN_URL, {
+            grant_type: 'authorization_code',
+            client_id: clientId,
+            code,
+            redirect_uri: callbackUrl,
+            code_verifier: verifier
+          })
+          if (token.status !== 200 || !token.data.access_token || !token.data.refresh_token) {
+            throw new Error(oauthError(token.data))
+          }
+          const stored = await completeLogin(
+            token.data.access_token,
+            token.data.refresh_token,
+            clientId
+          )
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end(loginPage('登录成功', 'DMCL 已完成 Microsoft 登录，可以关闭此页面。', true))
+          finish(null, store.accountInfo(stored))
+        } catch (error) {
+          try {
+            res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end(
+              loginPage(
+                '登录失败',
+                error instanceof Error ? error.message : String(error),
+                false
+              )
+            )
+          } catch {
+            // The browser may already be closed.
+          }
+          finish(error instanceof Error ? error : new Error(String(error)))
+        }
+      })
+
+      server.on('error', (error) => finish(error))
+      server.listen(0, async () => {
+        const address = server.address()
+        if (!address || typeof address === 'string') {
+          finish(new Error('无法启动本地登录回调服务'))
+          return
+        }
+        callbackUrl = `http://localhost:${address.port}/auth/callback`
+        const authUrl =
+          'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?' +
+          new URLSearchParams({
+            client_id: clientId,
+            response_type: 'code',
+            redirect_uri: callbackUrl,
+            response_mode: 'query',
+            scope: SCOPE,
+            state,
+            code_challenge: challenge,
+            code_challenge_method: 'S256',
+            prompt: 'select_account'
+          }).toString()
+        try {
+          await shell.openExternal(authUrl)
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(String(error)))
+        }
+      })
+
+      timer = setTimeout(
+        () => finish(new Error('Microsoft 登录等待超时，请重新尝试')),
+        10 * 60_000
+      )
+    })
+  }
+
   async start(clientIdInput?: string): Promise<MicrosoftFlow> {
     const clientId = clientIdFrom(clientIdInput)
     const response = await postForm<DeviceCodeResponse>(DEVICE_CODE_URL, {

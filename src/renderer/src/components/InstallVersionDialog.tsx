@@ -8,13 +8,14 @@ import {
   Layers3,
   Leaf,
   Puzzle,
+  ShieldCheck,
   Sparkles
 } from 'lucide-react'
 import type { LoaderOption, LoaderType } from '@shared/types'
 import { useApp } from '@renderer/state/AppContext'
 import { api, errorMessage } from '@renderer/lib/native'
 import { loaderLabel } from '@renderer/lib/format'
-import { Badge, Spinner } from './Ui'
+import { Badge, Spinner, Switch } from './Ui'
 import { Modal } from './Modal'
 
 const CHOICES: Array<{
@@ -25,6 +26,7 @@ const CHOICES: Array<{
 }> = [
   { id: 'vanilla', description: '纯净的游戏本体，兼容性最好', icon: Boxes, tone: 'vanilla' },
   { id: 'fabric', description: '轻量、更新快的现代模组加载器', icon: Leaf, tone: 'fabric' },
+  { id: 'neoforge', description: '新一代 Forge，面向现代版本', icon: ShieldCheck, tone: 'neoforge' },
   { id: 'forge', description: '模组生态最丰富的经典加载器', icon: Hammer, tone: 'forge' },
   { id: 'optifine', description: '光影、高清材质与性能优化', icon: Sparkles, tone: 'optifine' },
   { id: 'quilt', description: 'Fabric 生态的开放分支', icon: Puzzle, tone: 'quilt' }
@@ -36,6 +38,7 @@ function optionLabel(type: LoaderType, option: LoaderOption): string {
     return `OptiFine ${edition.replace(/_/g, ' ')} ${patch || ''}`
   }
   if (type === 'forge') return `Forge ${option.version}`
+  if (type === 'neoforge') return `NeoForge ${option.version}`
   if (type === 'fabric') return `Fabric Loader ${option.version}`
   if (type === 'quilt') return `Quilt Loader ${option.version}`
   return option.version
@@ -54,12 +57,13 @@ export function InstallVersionDialog({
   onClose: () => void
   onInstalled: (versionId: string, loader: LoaderType) => Promise<void> | void
 }): JSX.Element {
-  const { toast } = useApp()
+  const { toast, selectedInstance } = useApp()
   const [loader, setLoader] = useState<LoaderType>('vanilla')
   const [options, setOptions] = useState<LoaderOption[]>([])
   const [loaderVersion, setLoaderVersion] = useState('')
   const [loading, setLoading] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const [includeApi, setIncludeApi] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -69,6 +73,7 @@ export function InstallVersionDialog({
     setLoaderVersion('')
     setError('')
     setInstalling(false)
+    setIncludeApi(true)
   }, [open, gameVersion])
 
   useEffect(() => {
@@ -91,7 +96,13 @@ export function InstallVersionDialog({
         if (result.length === 0) setError('当前版本没有找到可用的加载器版本')
       })
       .catch((err) => {
-        if (!cancelled) setError(errorMessage(err))
+        if (!cancelled) {
+          const message = errorMessage(err)
+          setError(message)
+          void api.reportError(
+            `获取 ${loader} 加载器列表失败 (Minecraft ${gameVersion})\n${message}`
+          )
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -115,7 +126,9 @@ export function InstallVersionDialog({
       const result = await api.versions.install({
         versionId: gameVersion,
         loader,
-        loaderVersion: loader === 'vanilla' ? undefined : loaderVersion
+        loaderVersion: loader === 'vanilla' ? undefined : loaderVersion,
+        instanceId: selectedInstance?.id,
+        installApi: includeApi && (loader === 'fabric' || loader === 'quilt')
       })
       await onInstalled(result.versionId, result.loader)
       toast(
@@ -252,11 +265,35 @@ export function InstallVersionDialog({
           </div>
         )}
 
+        {(loader === 'fabric' || loader === 'quilt') && (
+          <div className="install-companion">
+            <span className="install-companion-icon">
+              <Layers3 size={18} />
+            </span>
+            <div className="install-companion-copy">
+              <strong>
+                {loader === 'fabric' ? '同时安装 Fabric API' : '同时安装 Quilted Fabric API'}
+              </strong>
+              <span>
+                {loader === 'fabric'
+                  ? '大多数 Fabric 模组的前置依赖，建议保持开启。'
+                  : 'Quilt 生态常用前置；若没有对应版本会尝试 Fabric API。'}
+              </span>
+            </div>
+            <Switch checked={includeApi} onChange={setIncludeApi} />
+          </div>
+        )}
+
         {error && <div className="install-error">{error}</div>}
 
         {loader === 'forge' && (
           <div className="install-tip">
             Forge 安装器会自动下载依赖并打补丁，首次安装可能需要几分钟。
+          </div>
+        )}
+        {loader === 'neoforge' && (
+          <div className="install-tip">
+            NeoForge 自带 API，无需额外安装前置模组。安装器会自动下载依赖并打补丁。
           </div>
         )}
         {loader === 'optifine' && (

@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { AppPaths, Settings } from '../shared/types'
 
-export const APP_NAME = 'AMCL'
+export const APP_NAME = 'DMCL'
 export const APP_VERSION = app.getVersion()
 
 export function appDataDir(): string {
@@ -22,7 +22,7 @@ export function logsDir(): string {
   return join(appDataDir(), 'logs')
 }
 
-/** Directory that contains AMCL.exe. In development the project root is used instead. */
+/** Directory that contains DMCL.exe. In development the project root is used instead. */
 export function installDir(): string {
   if (app.isPackaged) return dirname(process.execPath)
   return app.getAppPath()

@@ -20,16 +20,16 @@ Write-Host '1/6 构建前端与主进程…'
 if ($LASTEXITCODE -ne 0) { throw 'electron-vite 构建失败' }
 
 $release = Join-Path $root 'release'
-$dest = Join-Path $release "AMCL-$version-win-x64"
-$archive = Join-Path $release 'AMCL.7z'
-$zip = Join-Path $release "AMCL-$version-win-x64.zip"
-$portable = Join-Path $release "AMCL-Portable-$version.exe"
+$dest = Join-Path $release "DMCL-$version-win-x64"
+$archive = Join-Path $release 'DMCL.7z'
+$zip = Join-Path $release "DMCL-$version-win-x64.zip"
+$portable = Join-Path $release "DMCL-Portable-$version.exe"
 
 Write-Host '2/6 组装客户端目录…'
 if (Test-Path $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
 New-Item -ItemType Directory -Force $dest | Out-Null
 Copy-Item (Join-Path $root 'node_modules\electron\dist\*') $dest -Recurse -Force
-Rename-Item (Join-Path $dest 'electron.exe') 'AMCL.exe'
+Rename-Item (Join-Path $dest 'electron.exe') 'DMCL.exe'
 Remove-Item (Join-Path $dest 'resources\default_app.asar') -Force -ErrorAction SilentlyContinue
 
 $app = Join-Path $dest 'resources\app'
@@ -42,24 +42,24 @@ if (Test-Path (Join-Path $root 'resources')) {
 
 $runtimePackage = @"
 {
-  "name": "amcl-launcher",
+  "name": "dmcl-launcher",
   "version": "$version",
-  "description": "AMCL - A modern Minecraft launcher for Windows",
+  "description": "DMCL - A modern Minecraft launcher for Windows",
   "main": "out/main/index.js",
-  "author": "AMCL Team",
+  "author": "DMCL Team",
   "license": "MIT"
 }
 "@
 [System.IO.File]::WriteAllText((Join-Path $app 'package.json'), $runtimePackage, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host '3/6 写入 Windows 图标与版本信息…'
-& $rcedit (Join-Path $dest 'AMCL.exe') --set-icon $icon `
+& $rcedit (Join-Path $dest 'DMCL.exe') --set-icon $icon `
   --set-file-version $version --set-product-version $version `
-  --set-version-string 'ProductName' 'AMCL' `
-  --set-version-string 'FileDescription' 'AMCL Minecraft Launcher' `
-  --set-version-string 'CompanyName' 'AMCL Team' `
-  --set-version-string 'LegalCopyright' 'Copyright (c) 2026 AMCL Team' `
-  --set-version-string 'OriginalFilename' 'AMCL.exe'
+  --set-version-string 'ProductName' 'DMCL' `
+  --set-version-string 'FileDescription' 'DMCL Minecraft Launcher' `
+  --set-version-string 'CompanyName' 'DMCL Team' `
+  --set-version-string 'LegalCopyright' 'Copyright (c) 2026 DMCL Team' `
+  --set-version-string 'OriginalFilename' 'DMCL.exe'
 if ($LASTEXITCODE -ne 0) { throw 'rcedit 写入图标失败' }
 
 Write-Host '4/6 生成便携压缩包…'
@@ -72,14 +72,14 @@ $stub = Join-Path $root 'tools\sfx-stub.exe'
 Copy-Item $sfxModule $stub -Force
 & $rcedit $stub --set-icon $icon `
   --set-file-version $version --set-product-version $version `
-  --set-version-string 'ProductName' 'AMCL' `
-  --set-version-string 'FileDescription' 'AMCL Minecraft Launcher (Portable)' `
-  --set-version-string 'CompanyName' 'AMCL Team' `
-  --set-version-string 'LegalCopyright' 'Copyright (c) 2026 AMCL Team' `
-  --set-version-string 'OriginalFilename' "AMCL-Portable-$version.exe"
+  --set-version-string 'ProductName' 'DMCL' `
+  --set-version-string 'FileDescription' 'DMCL Minecraft Launcher (Portable)' `
+  --set-version-string 'CompanyName' 'DMCL Team' `
+  --set-version-string 'LegalCopyright' 'Copyright (c) 2026 DMCL Team' `
+  --set-version-string 'OriginalFilename' "DMCL-Portable-$version.exe"
 if ($LASTEXITCODE -ne 0) { throw 'rcedit 写入 SFX 图标失败' }
 
-$config = ";!@Install@!UTF-8!`r`nTitle=`"AMCL 我的世界启动器`"`r`nGUIMode=`"2`"`r`nRunProgram=`"AMCL.exe`"`r`n;!@InstallEnd@!`r`n"
+$config = ";!@Install@!UTF-8!`r`nTitle=`"DMCL 我的世界启动器`"`r`nGUIMode=`"2`"`r`nRunProgram=`"DMCL.exe`"`r`n;!@InstallEnd@!`r`n"
 $configFile = Join-Path $root 'tools\sfx-config.txt'
 [System.IO.File]::WriteAllText($configFile, $config, (New-Object System.Text.UTF8Encoding($false)))
 

@@ -168,7 +168,7 @@ export function InstanceDialog({
           </div>
           <div>
             <span>存储位置</span>
-            <strong>AMCL / instances</strong>
+            <strong>DMCL / instances</strong>
           </div>
           <Badge tone="green">独立存档</Badge>
         </div>

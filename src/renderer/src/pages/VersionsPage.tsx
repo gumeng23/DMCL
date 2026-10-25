@@ -21,7 +21,29 @@ import { ConfirmDialog } from '@renderer/components/ConfirmDialog'
 import { InstallVersionDialog } from '@renderer/components/InstallVersionDialog'
 
 type Tab = 'installed' | 'remote'
-type TypeFilter = 'release' | 'snapshot' | 'all'
+type TypeFilter = 'release' | 'snapshot' | 'special' | 'all'
+
+const APRIL_FOOLS = new Set([
+  '15w14a',
+  '1.rv-pre1',
+  '3d shareware v1.34',
+  '20w14infinite',
+  '22w13oneblockatatime',
+  '23w13a_or_b',
+  '24w14potato',
+  '25w14craftmine'
+])
+
+function isSpecialVersion(version: VersionSummary): boolean {
+  const id = version.id.toLowerCase()
+  if (APRIL_FOOLS.has(id)) return true
+  if (version.type === 'old_beta' || version.type === 'old_alpha') return false
+  if (version.type === 'snapshot') return !/^\d{2}w\d{2}[a-z]$/.test(version.id)
+  if (version.type === 'release') {
+    return !/^\d+\.\d+(?:\.\d+)?(?:-(?:pre|rc)\d+)?$/.test(version.id)
+  }
+  return false
+}
 
 function typeLabel(type: string): string {
   if (type === 'release') return '正式版'
@@ -87,9 +109,10 @@ export function VersionsPage(): JSX.Element {
   const filteredRemote = useMemo(() => {
     const query = search.trim().toLowerCase()
     return remote.filter((version) => {
-      if (filter === 'release' && version.type !== 'release') return false
-      if (filter === 'snapshot' && version.type === 'release') return false
-      if (filter === 'snapshot' && !['snapshot', 'old_beta', 'old_alpha'].includes(version.type)) return false
+      const special = isSpecialVersion(version)
+      if (filter === 'release' && (version.type !== 'release' || special)) return false
+      if (filter === 'snapshot' && (version.type !== 'snapshot' || special)) return false
+      if (filter === 'special' && !special) return false
       if (query && !version.id.toLowerCase().includes(query)) return false
       return true
     })
@@ -231,7 +254,8 @@ export function VersionsPage(): JSX.Element {
               }}
               options={[
                 { value: 'release', label: '正式版' },
-                { value: 'snapshot', label: '快照' },
+                { value: 'snapshot', label: '预览版' },
+                { value: 'special', label: '愚人节' },
                 { value: 'all', label: '全部' }
               ]}
             />
@@ -245,7 +269,7 @@ export function VersionsPage(): JSX.Element {
             <EmptyState
               icon={Boxes}
               title="还没有安装任何版本"
-              description="从版本库选择一个正式版开始，AMCL 会自动完成客户端与资源下载。"
+              description="从版本库选择一个正式版开始，DMCL 会自动完成客户端与资源下载。"
               action={
                 <button type="button" className="btn btn-primary" onClick={() => setTab('remote')}>
                   <Download size={15} />
@@ -355,15 +379,19 @@ export function VersionsPage(): JSX.Element {
                 {filteredRemote.slice(0, limit).map((version, index) => {
                   const isInstalled = installedIds.has(version.id)
                   const known = installedMap.get(version.id)
+                  const special = isSpecialVersion(version)
                   return (
                     <div className="remote-row" key={version.id}>
                       <div className="remote-version">
                         <span className="remote-index">{String(index + 1).padStart(2, '0')}</span>
                         <strong>{version.id}</strong>
                         {version.id === data.latestRelease?.id && <Badge tone="green">最新</Badge>}
+                        {special && <Badge tone="amber">愚人节</Badge>}
                       </div>
                       <div>
-                        <Badge tone={typeTone(version.type)}>{typeLabel(version.type)}</Badge>
+                        <Badge tone={special ? 'violet' : typeTone(version.type)}>
+                          {special ? '特殊版本' : typeLabel(version.type)}
+                        </Badge>
                       </div>
                       <div className="remote-date">{formatDate(version.releaseTime)}</div>
                       <div className="remote-actions">

@@ -1,5 +1,5 @@
 ;!@Install@!UTF-8!
-Title="AMCL 我的世界启动器"
+Title="DMCL 我的世界启动器"
 GUIMode="2"
-RunProgram="AMCL.exe"
+RunProgram="DMCL.exe"
 ;!@InstallEnd@!

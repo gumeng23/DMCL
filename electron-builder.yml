@@ -1,6 +1,6 @@
-appId: com.amcl.launcher
-productName: AMCL
-copyright: Copyright © 2026 AMCL Team
+appId: com.dmcl.launcher
+productName: DMCL
+copyright: Copyright © 2026 DMCL Team
 
 directories:
   output: release
@@ -30,9 +30,9 @@ win:
         - x64
 
 portable:
-  artifactName: AMCL-${version}-portable.${ext}
+  artifactName: DMCL-${version}-portable.${ext}
   requestExecutionLevel: user
-  unpackDirName: AMCL
+  unpackDirName: DMCL
 
 nsis:
   oneClick: false
@@ -40,9 +40,9 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: AMCL
+  shortcutName: DMCL
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
-  artifactName: AMCL-Setup-${version}.${ext}
+  artifactName: DMCL-Setup-${version}.${ext}
   deleteAppDataOnUninstall: false

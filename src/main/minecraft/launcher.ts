@@ -139,7 +139,7 @@ export class LaunchService {
       library_directory: paths.librariesDir,
       classpath: classpathEntries.join(';'),
       classpath_separator: ';',
-      launcher_name: 'AMCL',
+      launcher_name: 'DMCL',
       launcher_version: '1.0.0',
       user_properties: '{}'
     }
@@ -157,7 +157,7 @@ export class LaunchService {
     }
     jvmArgs.unshift(`-Xms${minMemory}M`, `-Xmx${memory}M`)
     jvmArgs.push(
-      '-Dminecraft.launcher.brand=AMCL',
+      '-Dminecraft.launcher.brand=DMCL',
       '-Dminecraft.launcher.version=1.0.0',
       '-Dlog4j2.formatMsgNoLookups=true'
     )
@@ -189,7 +189,7 @@ export class LaunchService {
     })
     const logFile = join(paths.logsDir, `game-${instance.id}.log`)
     const logStream = createWriteStream(logFile, { flags: 'a' })
-    logStream.write(`\n===== ${new Date().toISOString()} AMCL Launch =====\n`)
+    logStream.write(`\n===== ${new Date().toISOString()} DMCL Launch =====\n`)
     logStream.write(`Instance: ${instance.name}\nVersion: ${detail.id}\nJava: ${javaRuntime.path}\n\n`)
 
     logger.info(`启动 ${instance.name} / ${detail.id} / Java ${javaRuntime.version}`)
@@ -271,7 +271,7 @@ export class LaunchService {
       this.states.set(instanceId, finalState)
       this.emitState(finalState)
       this.writeLog(instance.id, 'launcher', finalState.message || '')
-      logStream.write(`\n[AMCL] ${finalState.message}\n`)
+      logStream.write(`\n[DMCL] ${finalState.message}\n`)
       logStream.end()
       void store.notePlaytime(instance.id, (endedAt - startedAt) / 1000)
     })

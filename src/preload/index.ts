@@ -48,6 +48,8 @@ const api: AmcApi & { debugInitialPage: PageId | null } = {
   accounts: {
     addOffline: (name) => ipcRenderer.invoke('accounts:add-offline', name),
     microsoftStart: (clientId) => ipcRenderer.invoke('accounts:microsoft-start', clientId),
+    microsoftBrowserLogin: (clientId) =>
+      ipcRenderer.invoke('accounts:microsoft-browser-login', clientId),
     microsoftPoll: (flowId) => ipcRenderer.invoke('accounts:microsoft-poll', flowId),
     authlibLogin: (input) => ipcRenderer.invoke('accounts:authlib-login', input),
     refresh: (id) => ipcRenderer.invoke('accounts:refresh', id),

@@ -7,7 +7,7 @@ import { dirname } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { DownloadSource } from '../shared/types'
 
-const USER_AGENT = 'AMCL-Launcher/1.0.0 (Windows NT 10.0; Win64; x64)'
+const USER_AGENT = 'DMCL-Launcher/1.0.0 (Windows NT 10.0; Win64; x64)'
 const MAX_REDIRECTS = 8
 const agent = new https.Agent({ keepAlive: true, maxSockets: 24, family: 4 })
 

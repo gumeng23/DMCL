@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { InstalledVersion, LoaderOption, LoaderType, VersionSummary } from '../../shared/types'
 import { cacheDir, resolvePaths } from '../paths'
-import { getBuffer, getJson, getJsonWithFallback } from '../http'
+import { getBuffer, getJson, getJsonWithFallback, HttpError } from '../http'
 import { store } from '../store'
 import { logger } from '../logger'
 import type {
@@ -38,10 +38,26 @@ function loaderFromId(id: string): LoaderType {
   return 'vanilla'
 }
 
+/** Maps a Minecraft version to the NeoForge Maven version prefix. */
+function neoForgePrefix(gameVersion: string): string {
+  const parts = gameVersion.split('.')
+  if (/^1\.\d+/.test(gameVersion)) {
+    const minor = Number(parts[1])
+    const patch = Number(parts[2] || 0)
+    if (minor === 20 && patch === 1) return '47.1'
+    if (minor > 20 || (minor === 20 && patch >= 2)) return `${minor}.${patch}`
+    return ''
+  }
+  if (parts.length >= 2) return `${parts[0]}.${parts[1]}`
+  return ''
+}
+
 export class VersionService {
   private manifest: VersionManifest | null = null
   private detailMemo = new Map<string, VersionJson>()
   private forgeMetadata: { at: number; versions: string[] } | null = null
+  private neoForgeMetadata: { at: number; versions: string[] } | null = null
+  private loaderOptionCache = new Map<string, { at: number; options: LoaderOption[] }>()
 
   async getManifest(force = false): Promise<VersionManifest> {
     if (this.manifest && !force) return this.manifest
@@ -274,24 +290,82 @@ export class VersionService {
   }
 
   async loaderOptions(gameVersion: string, type: LoaderType): Promise<LoaderOption[]> {
+    const key = `${type}:${gameVersion}`
+    const memory = this.loaderOptionCache.get(key)
+    if (memory && Date.now() - memory.at < 1000 * 60 * 30) return memory.options
+    const cacheFile = this.loaderCacheFile(gameVersion, type)
+    try {
+      const options = await this.fetchLoaderOptions(gameVersion, type)
+      this.loaderOptionCache.set(key, { at: Date.now(), options })
+      await mkdir(dirname(cacheFile), { recursive: true })
+      await writeFile(cacheFile, JSON.stringify(options), 'utf8')
+      return options
+    } catch (error) {
+      try {
+        const cached = JSON.parse(await readFile(cacheFile, 'utf8')) as LoaderOption[]
+        if (Array.isArray(cached) && cached.length) {
+          logger.warn(`加载器列表请求失败，使用缓存：${type} ${gameVersion}`)
+          return cached
+        }
+      } catch {
+        // No cache.
+      }
+      throw error
+    }
+  }
+
+  private loaderCacheFile(gameVersion: string, type: LoaderType): string {
+    const safe = gameVersion.replace(/[^A-Za-z0-9._-]/g, '_')
+    return join(cacheDir(), 'loaders', `${type}-${safe}.json`)
+  }
+
+  private async fetchLoaderOptions(gameVersion: string, type: LoaderType): Promise<LoaderOption[]> {
     if (type === 'fabric' || type === 'quilt') {
-      const url =
+      const label = type === 'fabric' ? 'Fabric' : 'Quilt'
+      const urls =
         type === 'fabric'
-          ? `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(gameVersion)}`
-          : `https://meta.quiltmc.org/v3/versions/loader/${encodeURIComponent(gameVersion)}`
-      const data = await getJson<Array<{ loader?: { version?: string; stable?: boolean } }>>(url, {
-        timeoutMs: 20_000,
-        retries: 2
-      })
-      if (!Array.isArray(data)) return []
-      return data
-        .filter((entry) => entry.loader?.version)
-        .map((entry) => ({
-          version: entry.loader!.version!,
-          stable: entry.loader!.stable !== false,
-          gameVersion,
-          type
-        }))
+          ? [
+              `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(gameVersion)}`,
+              `https://bmclapi2.bangbang93.com/fabric-meta/v2/versions/loader/${encodeURIComponent(gameVersion)}`
+            ]
+          : [
+              `https://meta.quiltmc.org/v3/versions/loader/${encodeURIComponent(gameVersion)}`
+            ]
+      let lastError: unknown
+      for (const url of urls) {
+        let data: Array<{
+          loader?: { version?: string; stable?: boolean }
+          intermediary?: { version?: string }
+        }>
+        try {
+          data = await getJson(url, { timeoutMs: 10_000, retries: 0 })
+        } catch (error) {
+          lastError = error
+          continue
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+          lastError = new Error('没有返回可用的加载器版本')
+          continue
+        }
+        if (
+          type === 'fabric' &&
+          data.every((entry) => !entry.intermediary?.version || entry.intermediary.version === '0.0.0')
+        ) {
+          throw new Error(`${label} 目前尚未支持 Minecraft ${gameVersion}，请使用 1.21.x 等已支持版本`)
+        }
+        return data
+          .filter((entry) => entry.loader?.version)
+          .map((entry) => ({
+            version: entry.loader!.version!,
+            stable: entry.loader!.stable !== false,
+            gameVersion,
+            type
+          }))
+      }
+      if (lastError instanceof HttpError && [400, 404].includes(lastError.status)) {
+        throw new Error(`${label} 尚未支持 Minecraft ${gameVersion}，请换一个游戏版本再试`)
+      }
+      throw new Error(`${label} 加载器列表获取失败：${lastError instanceof Error ? lastError.message : String(lastError)}`)
     }
 
     if (type === 'forge') {
@@ -316,11 +390,31 @@ export class VersionService {
       }))
     }
 
+    if (type === 'neoforge') {
+      const metadata = await this.getNeoForgeVersions()
+      const prefix = neoForgePrefix(gameVersion)
+      if (!prefix) {
+        throw new Error(`没有找到适合 Minecraft ${gameVersion} 的 NeoForge 版本`)
+      }
+      const versions = metadata
+        .filter((entry) => entry.startsWith(`${prefix}.`))
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+      if (versions.length === 0) {
+        throw new Error(`NeoForge 目前不支持 Minecraft ${gameVersion}`)
+      }
+      return versions.map((version, index) => ({
+        version,
+        stable: index === 0,
+        gameVersion,
+        type
+      }))
+    }
+
     if (type === 'optifine') {
       const data = await getJson<
         Array<{ mcversion?: string; type?: string; patch?: string; filename?: string }>
       >(`https://bmclapi2.bangbang93.com/optifine/${encodeURIComponent(gameVersion)}`, {
-        timeoutMs: 20_000,
+        timeoutMs: 15_000,
         retries: 2
       })
       if (!Array.isArray(data)) return []
@@ -356,11 +450,48 @@ export class VersionService {
     return versions
   }
 
+  private async getNeoForgeVersions(): Promise<string[]> {
+    if (this.neoForgeMetadata && Date.now() - this.neoForgeMetadata.at < 1000 * 60 * 30) {
+      return this.neoForgeMetadata.versions
+    }
+    const xml = (
+      await getBuffer(
+        'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml',
+        { timeoutMs: 30_000 }
+      )
+    ).toString('utf8')
+    const versions = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map((match) => match[1])
+    this.neoForgeMetadata = { at: Date.now(), versions }
+    return versions
+  }
+
   async fabricProfile(gameVersion: string, loaderVersion: string): Promise<VersionJson> {
-    const url = `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(
-      gameVersion
-    )}/${encodeURIComponent(loaderVersion)}/profile/json`
-    return getJson<VersionJson>(url, { timeoutMs: 25_000, retries: 2 })
+    const urls = [
+      `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(
+        gameVersion
+      )}/${encodeURIComponent(loaderVersion)}/profile/json`,
+      `https://bmclapi2.bangbang93.com/fabric-meta/v2/versions/loader/${encodeURIComponent(
+        gameVersion
+      )}/${encodeURIComponent(loaderVersion)}/profile/json`
+    ]
+    let lastError: unknown
+    for (const url of urls) {
+      try {
+        const profile = await getJson<VersionJson>(url, { timeoutMs: 18_000, retries: 0 })
+        const hasIntermediary = (profile.libraries || []).some(
+          (library) =>
+            library.name.startsWith('net.fabricmc:intermediary:') &&
+            !library.name.endsWith(':0.0.0')
+        )
+        if (hasIntermediary) return profile
+        lastError = new Error(`Fabric 目前尚未支持 Minecraft ${gameVersion}`)
+      } catch (error) {
+        lastError = error
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Fabric 加载器配置获取失败`)
   }
 
   async quiltProfile(gameVersion: string, loaderVersion: string): Promise<VersionJson> {

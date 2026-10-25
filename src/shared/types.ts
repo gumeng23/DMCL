@@ -284,6 +284,7 @@ export interface InstallVersionInput {
   loader: LoaderType
   loaderVersion?: string
   instanceId?: string
+  installApi?: boolean
 }
 
 export interface InstallLoaderInput {
@@ -291,6 +292,7 @@ export interface InstallLoaderInput {
   loader: LoaderType
   loaderVersion?: string
   instanceId?: string
+  installApi?: boolean
 }
 
 export interface SystemInfo {
@@ -354,6 +356,7 @@ export interface AmcApi {
   accounts: {
     addOffline(name: string): Promise<AccountInfo>
     microsoftStart(clientId?: string): Promise<MicrosoftFlow>
+    microsoftBrowserLogin(clientId?: string): Promise<AccountInfo>
     microsoftPoll(flowId: string): Promise<AccountInfo>
     authlibLogin(input: AuthlibLoginInput): Promise<AccountInfo>
     refresh(id: string): Promise<AccountInfo>

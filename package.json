@@ -1,9 +1,9 @@
 {
-  "name": "amcl-launcher",
-  "version": "1.0.3",
-  "description": "AMCL - A modern Minecraft launcher for Windows",
+  "name": "dmcl-launcher",
+  "version": "1.0.5",
+  "description": "DMCL - A modern Minecraft launcher for Windows",
   "main": "./out/main/index.js",
-  "author": "AMCL Team",
+  "author": "DMCL Team",
   "license": "MIT",
   "private": true,
   "scripts": {

@@ -40,6 +40,7 @@ export function AccountDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [msClientId, setMsClientId] = useState('')
   const [msFlow, setMsFlow] = useState<MicrosoftFlow | null>(null)
   const [msBusy, setMsBusy] = useState(false)
+  const [msBrowserBusy, setMsBrowserBusy] = useState(false)
   const [msError, setMsError] = useState('')
   const pollBusy = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -52,6 +53,8 @@ export function AccountDialog({ open, onClose }: { open: boolean; onClose: () =>
       setRemoving(null)
       setMsFlow(null)
       setMsError('')
+      setMsBusy(false)
+      setMsBrowserBusy(false)
       setMsClientId(data.settings.msClientId || '')
       setTimeout(() => inputRef.current?.focus(), 100)
     }
@@ -132,6 +135,21 @@ export function AccountDialog({ open, onClose }: { open: boolean; onClose: () =>
       toast('error', '移除失败', errorMessage(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleBrowserLogin = async (): Promise<void> => {
+    setMsBrowserBusy(true)
+    setMsError('')
+    try {
+      await api.accounts.microsoftBrowserLogin(msClientId.trim() || undefined)
+      await refreshAccounts()
+      toast('success', 'Microsoft 登录成功', '已切换到正版账户')
+      onClose()
+    } catch (err) {
+      setMsError(errorMessage(err))
+    } finally {
+      setMsBrowserBusy(false)
     }
   }
 
@@ -292,7 +310,7 @@ export function AccountDialog({ open, onClose }: { open: boolean; onClose: () =>
                 </span>
                 <div>
                   <h3>Microsoft 正版登录</h3>
-                  <p>使用设备代码安全登录，自动获取正版皮肤与账户信息。</p>
+                  <p>打开浏览器完成登录，应用会自动接上，无需手动输入验证码。</p>
                 </div>
               </div>
 
@@ -348,38 +366,60 @@ export function AccountDialog({ open, onClose }: { open: boolean; onClose: () =>
                         }}
                         placeholder="Azure 应用注册中获取的客户端 ID"
                         spellCheck={false}
-                        disabled={msBusy}
+                        disabled={msBusy || msBrowserBusy}
                       />
                     </div>
                     <span className="field-hint">
-                      首次使用需要填写一个支持公共客户端设备代码流的 Azure 应用 ID，之后会自动记住。
+                      首次使用填写一次即可，之后会自动记住。
                     </span>
                   </label>
                   {msError && <div className="ms-error">{msError}</div>}
-                  <button
-                    type="button"
-                    className="btn btn-primary account-add-button"
-                    disabled={msBusy}
-                    onClick={() => {
-                      setMsBusy(true)
-                      setMsError('')
-                      api.accounts
-                        .microsoftStart(msClientId.trim() || undefined)
-                        .then((flow) => {
-                          setMsClientId(msClientId.trim())
-                          setMsFlow(flow)
-                        })
-                        .catch((err) => setMsError(errorMessage(err)))
-                        .finally(() => setMsBusy(false))
-                    }}
-                  >
-                    {msBusy ? <Spinner size={15} /> : <LogIn size={15} />}
-                    开始 Microsoft 登录
-                  </button>
+                  {msBrowserBusy ? (
+                    <div className="ms-browser-waiting">
+                      <Loader2 size={17} className="spin" />
+                      <div>
+                        <strong>已在浏览器打开登录页面</strong>
+                        <span>请完成 Microsoft 登录，成功后 DMCL 会自动登录。</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-primary account-add-button"
+                        disabled={msBrowserBusy || msBusy}
+                        onClick={() => void handleBrowserLogin()}
+                      >
+                        <ExternalLink size={15} />
+                        打开浏览器并登录
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button ms-device-toggle"
+                        disabled={msBusy}
+                        onClick={() => {
+                          setMsBusy(true)
+                          setMsError('')
+                          api.accounts
+                            .microsoftStart(msClientId.trim() || undefined)
+                            .then((flow) => {
+                              setMsClientId(msClientId.trim())
+                              setMsFlow(flow)
+                            })
+                            .catch((err) => setMsError(errorMessage(err)))
+                            .finally(() => setMsBusy(false))
+                        }}
+                      >
+                        {msBusy ? <Spinner size={12} /> : <LogIn size={12} />}
+                        改用设备代码登录
+                      </button>
+                    </>
+                  )}
                   <div className="ms-help">
                     <strong>如何获取 Client ID？</strong>
                     <br />
-                    在 Azure Portal 注册一个「个人 Microsoft 账户」应用，启用公共客户端流，然后把应用程序（客户端）ID 填入上方。
+                    Azure Portal → 注册「个人 Microsoft 账户」应用 → 身份验证中启用「公共客户端流」，
+                    并添加重定向 URI <code>http://localhost</code>。然后把应用程序（客户端）ID 填入上方。
                     <br />
                     <button
                       type="button"

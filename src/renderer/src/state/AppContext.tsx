@@ -353,7 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
             <span className="cube-right" />
           </div>
         </div>
-        <div className="boot-name">AMCL</div>
+        <div className="boot-name">DMCL</div>
         <div className="boot-tagline">正在准备你的世界</div>
         <div className="boot-bar">
           <span />
